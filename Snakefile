@@ -1,7 +1,25 @@
-SAMPLES = ["SRR787528.chr15", "SRR787552.chr15"]
+
+configfile: "config.yaml"
 
 rule all:
-    input: expand("bw/{sample}.bw", sample = SAMPLES)
+    input:
+        "indexes/chr15/human.1.bt2",
+        "indexes/chr15/human.2.bt2",
+        "indexes/chr15/human.3.bt2",
+        "indexes/chr15/human.4.bt2",
+        "indexes/chr15/human.rev.1.bt2",
+        "indexes/chr15/human.rev.2.bt2",
+	expand("mapped/{sample}.sam", sample = config["samples"]),
+	expand("mapped/{sample}.bam", sample = config["samples"]),
+	expand("mapped/{sample}_sorted.bam", sample = config["samples"]),
+	expand("mapped/{sample}_sorted.bam.bai", sample = config["samples"]),
+	expand("qc/fastqc/{sample}_fastqc.html", sample = config["samples"]),
+    	expand("qc/fastqc/{sample}_fastqc.zip", sample = config["samples"]),
+	"qc/multiqc/reads.html",
+	expand("bw/{sample}.bw", sample = config["samples"]),
+        expand("logs/bowtie2/{sample}.log", sample = config["samples"]),
+        "qc/multiqc/bams.html",
+	"result.tar.gz"
 
 rule fastqc:
     input:
@@ -9,72 +27,77 @@ rule fastqc:
     output:
         "qc/fastqc/{sample}_fastqc.html",
         "qc/fastqc/{sample}_fastqc.zip"
-    log:
-        "logs/fastqc/{sample}.log"
     shell:
         "fastqc {input} -q -o qc/fastqc/"
 
+
 rule multiqc:
     input:
-        expand("qc/fastqc/{sample}_fastqc.html", sample = SAMPLES)
+        expand("qc/fastqc/{sample}_fastqc.zip", sample = config["samples"])
     output:
-        "qc/multiqc_report.html"
-    wrapper:
-        "0.31.1/bio/multiqc"
+        "qc/multiqc/reads.html"
+    shell:
+        "multiqc -d {input} -n {output}"
 
 rule wget:
-    output:
- 	"chr15/chr15.fa.gz"
-    shell:
-        "wget -O ./chr15/chr15.fa.gz 'ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/chr15.fa.gz'"
+    output: "indexes/chr15/chr15.fa.gz"
+    priority: 1
+    shell: "wget -O {output} ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/chr15.fa.gz"
 
 rule bowtie2Build:
-    input: "chr15/chr15.fa.gz"
+    input: "indexes/chr15/chr15.fa.gz"
     params:
-        basename = "./indexes/human"
+        basename = "indexes/chr15/human"
     output:
-        output1="indexes/human.1.bt2",
-        output2="indexes/human.2.bt2",
-        output3="indexes/human.3.bt2",
-        output4="indexes/human.4.bt2",
-        outputrev1="indexes/human.rev.1.bt2",
-        outputrev2="indexes/human.rev.2.bt2"
-    log:
-	"logs/bowtie2/bowtie-build.log"
+        output1="indexes/chr15/human.1.bt2",
+        output2="indexes/chr15/human.2.bt2",
+        output3="indexes/chr15/human.3.bt2",
+        output4="indexes/chr15/human.4.bt2",
+        outputrev1="indexes/chr15/human.rev.1.bt2",
+        outputrev2="indexes/chr15/human.rev.2.bt2"
+    priority: 2
     shell: "bowtie2-build {input} {params.basename}"
 
-
-rule bowtie2:
+rule bowtie_aln:
     input: "reads/{sample}.fastq"
-    output: "mapped/{sample}.bam"
+    params:
+        basename="indexes/chr15/human"
+    output: "mapped/{sample}.sam"
     log: "logs/bowtie2/{sample}.log"
-    threads: 4
-    shell: """
-        bowtie2 -p {threads} -x ./indexes/human -U {input} 2> {log} | samtools view -bo {output} - 
-        """
-rule multiqc:
+    shell:
+        "bowtie2 -x {params.basename} -U {input} 2> {log} > {output}"
+
+rule multiqc_bam:
     input:
-        "logs/bowtie2/"
+        expand("logs/bowtie2/{sample}.log", sample = config["samples"])
     output:
         "qc/multiqc/bams.html"
     shell: "multiqc -d {input} -n {output}"
 
+rule sam2bam:
+    input: "mapped/{sample}.sam"
+    output: "mapped/{sample}.bam"
+    shell:
+        "samtools view -Sb {input} > {output}"
+
 rule index_bam:
         input: "mapped/{sample}.bam"
         output: "mapped/{sample}_sorted.bam"
-        shell: """
-              samtools sort {input} -o {output}
-        """
+        shell: "samtools sort {input} -o {output}"
 rule index:
    	input: "mapped/{sample}_sorted.bam"
+	priority: 2
         output: "mapped/{sample}_sorted.bam.bai"
-        shell: """
-              samtools index {input}
-        """
+        shell: "samtools index {input}"
 
 rule bigwig:
     input:
         "mapped/{sample}_sorted.bam"
     output:
         "bw/{sample}.bw"
+    priority: 1
     shell: "bamCoverage -b {input} -o {output}"
+
+rule tar:
+        output: "result.tar.gz"
+        shell: "tar -zcvf result.tar.gz bw qc"
