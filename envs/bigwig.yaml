@@ -1,0 +1,15 @@
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - numpy=1.18.1
+  - pybigwig=0.3.17
+  - python=3.7.3=h357f687_2
+  - pip:
+    - matplotlib==3.1.0
+    - deeptools==3.4.3
+    - deeptoolsintervals==0.1.9
+    - py2bit==0.3.0
+    - pysam==0.15.4
+    - scipy==1.4.1
