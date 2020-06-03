@@ -1,103 +1,112 @@
-
 configfile: "config.yaml"
+
+import pandas as pd
+
+data =  pd.read_table("data_table.tsv").set_index(['samples'], drop=False)
+
+SAMPLE =  ['GSM787552_CD14_H3K36me3', 'GSM787528_CD14_H3K36me3', 'GSM787529_CD14_H3K36me3', 'GSM787524_CD14_H3K36me3','GSM787515_CD14_H3K36me3', 'GSM787513_CD14_H3K36me3']
+
 
 rule all:
     input:
-        "indexes/chr15/human.1.bt2",
-        "indexes/chr15/human.2.bt2",
-        "indexes/chr15/human.3.bt2",
-        "indexes/chr15/human.4.bt2",
-        "indexes/chr15/human.rev.1.bt2",
-        "indexes/chr15/human.rev.2.bt2",
-	expand("mapped/{sample}.sam", sample = config["samples"]),
-	expand("mapped/{sample}.bam", sample = config["samples"]),
-	expand("mapped/{sample}_sorted.bam", sample = config["samples"]),
-	expand("mapped/{sample}_sorted.bam.bai", sample = config["samples"]),
-	expand("qc/fastqc/{sample}_fastqc.html", sample = config["samples"]),
-    	expand("qc/fastqc/{sample}_fastqc.zip", sample = config["samples"]),
-	"qc/multiqc/reads.html",
-	expand("bw/{sample}.bw", sample = config["samples"]),
-        expand("logs/bowtie2/{sample}.log", sample = config["samples"]),
+        expand("qc/fastqc/{samples}.html", samples = SAMPLE),
+        expand("qc/fastqc/{samples}_fastqc.zip", samples = SAMPLE),
+        "qc/multiqc/reads.html",
+        expand("indexes/{genome}/{organism}.1.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.2.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.3.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.4.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.rev.1.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.rev.2.bt2", genome = config['genome'], organism = config['organism']),
+        expand("mapped/{samples}.sam", samples = SAMPLE),
+        expand("mapped/{samples}.bam", samples = SAMPLE),
+        expand("mapped/{samples}_sorted.bam", samples = SAMPLE),
+        expand("mapped/{samples}_sorted.bam.bai", samples = SAMPLE),
+        expand("bw/{samples}.bw", samples = SAMPLE),
         "qc/multiqc/bams.html",
-	"result.tar.gz"
-
+        "result.tar.gz"
+       
 rule fastqc:
     input:
-        "reads/{sample}.fastq"
+        lambda wildcards: data['File'][wildcards.samples]
     output:
-        "qc/fastqc/{sample}_fastqc.html",
-        "qc/fastqc/{sample}_fastqc.zip"
-    shell:
-        "fastqc {input} -q -o qc/fastqc/"
-
-
+        html="qc/fastqc/{samples}.html",
+        zip="qc/fastqc/{samples}_fastqc.zip" 
+    params: ""
+    log:
+        "logs/fastqc/{samples}.log"
+    wrapper:
+        "0.59.2/bio/fastqc"
 rule multiqc:
     input:
-        expand("qc/fastqc/{sample}_fastqc.zip", sample = config["samples"])
+        expand("qc/fastqc/{samples}_fastqc.zip", samples = SAMPLE)
     output:
         "qc/multiqc/reads.html"
     shell:
         "multiqc -d {input} -n {output}"
 
 rule wget:
-    output: "indexes/chr15/chr15.fa.gz"
+    output: expand("indexes/{genome}/{genome}.fa.gz", genome = config['genome'])
     priority: 1
-    shell: "wget -O {output} ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/chr15.fa.gz"
+    params:
+        link = config['genome']
+    shell: "wget -O {output} http://hgdownload.soe.ucsc.edu/goldenPath/{params.link}/bigZips/{params.link}.fa.gz" 
 
 rule bowtie2Build:
-    input: "indexes/chr15/chr15.fa.gz"
+    input: expand("indexes/{genome}/{genome}.fa.gz", genome = config['genome'])
     params:
-        basename = "indexes/chr15/human"
+        basename = expand("indexes/{genome}/{organism}", genome = config['genome'], organism = config['organism'])
     output:
-        output1="indexes/chr15/human.1.bt2",
-        output2="indexes/chr15/human.2.bt2",
-        output3="indexes/chr15/human.3.bt2",
-        output4="indexes/chr15/human.4.bt2",
-        outputrev1="indexes/chr15/human.rev.1.bt2",
-        outputrev2="indexes/chr15/human.rev.2.bt2"
-    priority: 2
+        expand("indexes/{genome}/{organism}.1.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.2.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.3.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.4.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.rev.1.bt2", genome = config['genome'], organism = config['organism']),
+        expand("indexes/{genome}/{organism}.rev.2.bt2", genome = config['genome'], organism = config['organism'])
+    priority: 1
+    conda:
+        "envs/bowtie2.yaml"
     shell: "bowtie2-build {input} {params.basename}"
 
 rule bowtie_aln:
-    input: "reads/{sample}.fastq"
+    input: 
+        lambda wildcards: data['File'][wildcards.samples]
     params:
-        basename="indexes/chr15/human"
-    output: "mapped/{sample}.sam"
-    log: "logs/bowtie2/{sample}.log"
+        basename=expand("indexes/{genome}/{organism}", genome = config['genome'], organism = config['organism'])
+    output: "mapped/{samples}.sam"
+    log: "logs/bowtie2/{samples}.log"
+    conda:
+        "envs/bowtie2.yaml"
     shell:
         "bowtie2 -x {params.basename} -U {input} 2> {log} > {output}"
 
+rule sam2bam:
+    input: "mapped/{samples}.sam"
+    output:
+        bam = "mapped/{samples}.bam", 
+        bam_sort = "mapped/{samples}_sorted.bam",
+        bai = "mapped/{samples}_sorted.bam.bai"
+    run:
+        shell("samtools view -Sb {input} > {output.bam}"),
+        shell("samtools sort {output.bam} -o {output.bam_sort}"),
+        shell("samtools index {output.bam_sort}")
+
+rule bigwig:
+    input:
+        "mapped/{samples}_sorted.bam"
+    output:
+        "bw/{samples}.bw"
+    conda:
+        "envs/bigwig.yaml"
+    shell: "bamCoverage -b {input} -o {output}"
+
 rule multiqc_bam:
     input:
-        expand("logs/bowtie2/{sample}.log", sample = config["samples"])
+        expand("logs/bowtie2/{samples}.log", samples = SAMPLE)
     output:
         "qc/multiqc/bams.html"
     shell: "multiqc -d {input} -n {output}"
 
-rule sam2bam:
-    input: "mapped/{sample}.sam"
-    output: "mapped/{sample}.bam"
-    shell:
-        "samtools view -Sb {input} > {output}"
-
-rule index_bam:
-        input: "mapped/{sample}.bam"
-        output: "mapped/{sample}_sorted.bam"
-        shell: "samtools sort {input} -o {output}"
-rule index:
-   	input: "mapped/{sample}_sorted.bam"
-	priority: 2
-        output: "mapped/{sample}_sorted.bam.bai"
-        shell: "samtools index {input}"
-
-rule bigwig:
-    input:
-        "mapped/{sample}_sorted.bam"
-    output:
-        "bw/{sample}.bw"
-    priority: 1
-    shell: "bamCoverage -b {input} -o {output}"
-
 rule tar:
         output: "result.tar.gz"
-        shell: "tar -zcvf result.tar.gz bw qc"
+        shell: "tar -zcvf result.tar.gz bw qc/multiqc"
