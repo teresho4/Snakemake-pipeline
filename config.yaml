@@ -1,9 +1,3 @@
-samples:
-    SRR787552.chr15: SRR787552.chr15
-    SRR787528.chr15: SRR787528.chr15
-    SRR787529.chr15: SRR787529.chr15
-    SRR787524.chr15: SRR787524.chr15
-    SRR787515.chr15: SRR787515.chr15
-    SRR787513.chr15: SRR787513.chr15
-
+genome: hg19
+organism: human
 
