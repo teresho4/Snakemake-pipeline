@@ -1,3 +1,3 @@
-# Snakemake-pipeline
-I've put result.tar.gz in this repo or you can download it by link:
-https://drive.google.com/file/d/17DUeGXoUJRaewn_FTnt_l3virCA3UEKh/view?usp=sharing
+The task is to make a generic pipeline, which takes an input table with samples information, makes quality control using FastQC and summarizes it using Multqc. Then it aligns reads to a UCSC genome build configured in config.yaml file (e.g one of hg19, hg38, mm9, mm10), converts BAM files to BigWig files with coverage information and in the end generates final multiqc report including raw qc and bismark qc data. In order to make the pipeline simpler let’s assume that input reads are always single-end.
+
+Input data: CD14 Monocytes Chip-Seq reads based on a dataset from SRA, reads are restricted only to chr15 chromosome (https://drive.google.com/file/d/1vtHVs4Yvf6ZnfynllxGYD7Lc96HuU46m/view?usp=sharing). 
